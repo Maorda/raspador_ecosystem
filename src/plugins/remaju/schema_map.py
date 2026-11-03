@@ -16,7 +16,7 @@ SCHEMA_MAP = {
         "arancel": "Arancel",
         "oblaje": "Oblaje",
         "descripcion": "Descripción",
-        "numeroDeInscritos": "numero De Inscritos"
+        "numeroDeInscritos": "N° inscritos"
     },
     "mapeo_inmuebles": {
         "departamento": "Departamento",

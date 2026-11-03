@@ -3,7 +3,7 @@ import os
 from infra.logger import get_logger
 from plugins.remaju.interceptors.factory import crear_motor_remaju
 from plugins.remaju.pre_extract import PreExtractValidator
-from plugins.extraccion import RemajuExtractor
+from plugins.remaju.extraccion import RemajuExtractor
 from interceptor_motor.interceptors.spinner import SpinnerTimeoutError
 from interceptor_motor.contracts.base_modal import ModalCloseError
 from typing import Any

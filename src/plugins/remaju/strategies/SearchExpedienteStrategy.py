@@ -16,9 +16,9 @@ from interceptor_motor import ModalCloseError, SpinnerTimeoutError
 
 # Módulos especializados inyectados
 from plugins.remaju.pre_extract import PreExtractValidator
-from plugins.extraccion import RemajuExtractor
-from plugins.navigation import RemajuNavigator
-from plugins.downloads import RemajuDownloader
+from plugins.remaju.extraccion import RemajuExtractor
+from plugins.remaju.navigation import RemajuNavigator
+from plugins.remaju.downloads import RemajuDownloader
 from core.blackboard import ScrapingBlackboard
 
 # Utilidades desacopladas y constantes
@@ -79,8 +79,8 @@ class SearchExpedienteStrategy(BaseStrategy, JSCapableMixin):
                 logger.info("cards_detected_on_page", count=count_cards, page_number=page_number)
 
                 for index in range(count_cards):
-                    expediente_id = f"EXP-P{page_number}-C{index+1}"
-                    num_expediente = expediente_id  
+                    
+                    num_expediente = ""  
                     
                     try:
                         logger.info("processing_card_item", current=index + 1, total=count_cards, page=page_number)
@@ -96,39 +96,44 @@ class SearchExpedienteStrategy(BaseStrategy, JSCapableMixin):
                         await motor.execute_all(page)
 
                         await pre_validator.esperar_detalle_cargado(motor_sincronizar_fn=motor.execute_all)
-
                         # 🌟 USO DEL EXTRACTOR CONFIGURADO CON SCHEMA_MAP
-                        # Esto garantiza que remate, inmuebles (con departamento) y cronograma se mapeen correctamente
                         datos_completos = await extractor.extract_tab_remate_completo(motor_sincronizar_fn=motor.execute_all)
                         
                         remate_info = datos_completos.get("remate", {})
-                        inmuebles_lista = datos_completos.get("inmuebles", [])
-                        inmueble_info = inmuebles_lista[0] if inmuebles_lista else {}
+                        inmuebles = datos_completos.get("inmuebles", [])
+                        ubicacion = datos_completos.get("ubicacion", {})
                         cronograma_info = datos_completos.get("cronograma", {})
+                        
+                        inmueble_info = inmuebles[0] if inmuebles else {}
 
                         # Rescate seguro del departamento utilizando SCHEMA_MAP / inmueble_info
                         departamento = (
                             inmueble_info.get("departamento") or 
                             remate_info.get("departamento") or 
+                            ubicacion.get("departamento") or
                             "NO ESPECIFICADO"
                         )
                         inmueble_info["departamento"] = departamento
+                        if "departamento" not in ubicacion:
+                            ubicacion["departamento"] = departamento
 
-                        num_remate = sanitizar_texto(remate_info.get("resolucion", "")) or expediente_id
+                        # Extracción estricta y limpia de identificadores únicos
+                        num_remate = sanitizar_texto(remate_info.get("resolucion", ""))
                         convocatoria = sanitizar_texto(remate_info.get("convocatoria", ""))
-                        num_expediente = sanitizar_texto(remate_info.get("expediente", "")) or expediente_id
+                        num_expediente = sanitizar_texto(remate_info.get("expediente", ""))
                         
                         datos_completos["expediente_id"] = num_expediente
 
-                        # 🛑 VALIDACIÓN TEMPRANA DE IDEMPOTENCIA
-                        if self.state_manager.esta_procesado(num_remate, convocatoria):
-                            print(f"\n[SALTANDO REPETIDO] Remate ya procesado anteriormente: {num_remate} ({convocatoria})")
+                        # 🛑 VALIDACIÓN TEMPRANA DE IDEMPOTENCIA (Solo si tenemos identificadores reales)
+                        if num_remate and convocatoria and self.state_manager.esta_procesado(num_remate, convocatoria):
+                            print(f"\n[SALTANDO REPETIDO] El expediente '{num_expediente}' con resolución '{num_remate}' ({convocatoria}) ya fue procesado anteriormente.")
                             await navigator.regresar_a_bandeja(motor_sincronizar_fn=motor.execute_all)
                             continue
 
                         # Descarga de PDF y registro inmediato en Base de Datos
                         nombre_pdf = await downloader.download_resolucion_pdf(expediente_num=num_expediente)
                         datos_completos["pdf_path"] = nombre_pdf
+                        remate_info["archivoUrl"] = nombre_pdf
 
                         materia = sanitizar_texto(remate_info.get("materia", "")).lower()
                         if self.MATERIA_EXCLUIDA in materia:
@@ -152,9 +157,31 @@ class SearchExpedienteStrategy(BaseStrategy, JSCapableMixin):
                             self.state_manager.guardar_procesado(num_remate, convocatoria, datos_completos)
                             self.state_manager.limpiar_error_manual(num_expediente)
 
-                            print(f"\n[GUARDADO EXITOSO EN BD] Pág: {page_number} | Tarjeta: {index+1}/{count_cards}")
-                            print(f" -> Expediente: {num_expediente} | Remate: {num_remate} ({convocatoria})")
-                            print(f" -> Departamento: {departamento} | Fases de Cronograma: {len(cronograma_info)}\n")
+                            # Registro estructurado de producción con el DTO íntegro
+                            dto_expediente = {
+                                "numero_expediente": num_expediente,
+                                "remate_info": remate_info,
+                                "ubicacion_geografica": ubicacion,
+                                "inmuebles": inmuebles,
+                                "partidas_invalidas_detectadas": datos_completos.get("partidas_invalidas", []),
+                                "cronograma_fases_count": len(cronograma_info),
+                                "status": "COMPLETED"
+                            }
+
+                            logger.info(
+                                "expediente_procesado_y_registrado_exitosamente",
+                                pagina=page_number,
+                                tarjeta_indice=index + 1,
+                                total_tarjetas=count_cards,
+                                expediente=num_expediente,
+                                departamento=ubicacion.get("departamento"),
+                                provincia=ubicacion.get("provincia"),
+                                distrito=ubicacion.get("distrito"),
+                                total_inmuebles=len(inmuebles),
+                                payload_dto=dto_expediente
+                            )
+
+                            
 
                         await navigator.regresar_a_bandeja(motor_sincronizar_fn=motor.execute_all)
 

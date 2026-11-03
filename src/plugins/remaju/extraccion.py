@@ -72,8 +72,8 @@ class RemajuExtractor:
         descripcion = panel.locator(".texto-info-scroll").first
         datos["descripcion"] = sanitizar_texto(await descripcion.inner_text()) if await descripcion.count() else ""
         
-        enlace_pdf = panel.locator('a.ui-commandlink[title="Descargar"]').filter(has_text=re.compile(r"resolucion\.pdf", re.IGNORECASE))
-        datos["archivoUrl"] = sanitizar_texto(await enlace_pdf.first.inner_text()) if await enlace_pdf.count() else ""
+        # Dejamos inicializado o vacío para que la estrategia principal inyecte la ruta real del PDF descargado
+        datos["archivoUrl"] = "" 
         
         if not datos.get("tipoCambio"):
             tipo_cambio = panel.locator("span.label-danger.text-bold")
@@ -83,47 +83,45 @@ class RemajuExtractor:
         return datos
 
     async def _extraer_datos_inmuebles(self) -> Tuple[Dict[str, str], List[Dict[str, str]], List[Dict[str, Any]]]:
-        """Extrae la ubicación utilizando dinámicamente SCHEMA_MAP y aplica Fail-Fast estricto por contrato completo."""
+        """Extrae la ubicación de forma determinista usando el HTML estructurado de celdas grid."""
         page = self._require_page()
-        mapeo = self.app_config.get("mapeo_inmuebles", {})
         
-        # Delimitamos estrictamente las llaves geográficas requeridas según el contrato de configuración
-        keys_geograficas = ("departamento", "provincia", "distrito")
-        mapeo_ubicacion = {clave: mapeo[clave] for clave in keys_geograficas if clave in mapeo}
-
-        ubicacion: Dict[str, str] = {}
-        contenedor_ub = page.locator(SELECTOR_RESUMEN_UBICACION)
+        ubicacion = {}
+        # Contenedor general donde residen las celdas de Departamento, Provincia y Distrito
+        # Podemos buscar el contenedor raíz que posee la etiqueta "Departamento"
         
-        if await contenedor_ub.count():
-            await contenedor_ub.first.wait_for(state="visible", timeout=10000)
-            
-            # 1. Uso dinámico y completo del contrato en SCHEMA_MAP
-            for clave_dto, etiqueta_dom in mapeo_ubicacion.items():
-                try:
-                    lbl = contenedor_ub.locator(f"text={etiqueta_dom}").first
-                    if await lbl.count() > 0:
-                        val_elem = lbl.locator("xpath=following-sibling::div[1] | ./parent::*/following-sibling::*[1]").first
-                        if await val_elem.count() > 0:
-                            ubicacion[clave_dto] = sanitizar_texto(await val_elem.inner_text())
-                except Exception as ex:
-                    logger.debug("error_extrayendo_campo_ubicacion", campo=clave_dto, error=str(ex))
+        keys_geograficas = {
+            "departamento": "Departamento",
+            "provincia": "Provincia",
+            "distrito": "Distrito"
+        }
 
-        # 2. Validación estricta y trazabilidad de errores por contrato completo (Fail-Fast)
-        campos_faltantes = [clave for clave in mapeo_ubicacion.keys() if not ubicacion.get(clave)]
+        for clave_dto, etiqueta in keys_geograficas.items():
+            try:
+                # Buscamos el div que contiene exactamente el texto de la etiqueta y saltamos al div hermano contiguo
+                xpath_expr = f"//div[text()='{etiqueta}']/following-sibling::div[1]"
+                val_elem = page.locator(f"xpath={xpath_expr}").first
+                
+                if await val_elem.count() > 0:
+                    ubicacion[clave_dto] = sanitizar_texto(await val_elem.inner_text())
+            except Exception as ex:
+                logger.debug("error_extrayendo_campo_ubicacion_grid", campo=clave_dto, error=str(ex))
+
+        # Validación estricta por contrato (Fail-Fast)
+        campos_faltantes = [clave for clave in keys_geograficas.keys() if not ubicacion.get(clave)]
         
         if campos_faltantes:
             logger.warning(
-                "ubicacion_incompleta_por_contrato",
+                "ubicacion_incompleta_grid",
                 campos_faltantes=campos_faltantes,
-                mapeo_esperado=mapeo_ubicacion,
-                mensaje="No se pudieron extraer todos los campos geográficos obligatorios según SCHEMA_MAP."
+                mensaje="No se pudieron extraer todos los campos geográficos del grid estructurado."
             )
             raise ValueError(
-                f"Fallo de extracción crítica: Faltan los campos geográficos obligatorios {campos_faltantes} "
-                f"según el contrato en {SELECTOR_RESUMEN_UBICACION}. Expediente derivado a revisión manual."
+                f"Fallo de extracción crítica: Faltan los campos geográficos {campos_faltantes} "
+                f"en el grid de ubicación. Expediente derivado a revisión manual."
             )
             
-        # 3. Extracción de la tabla de inmuebles (soportando múltiples partidas registrales)
+        # Extracción de la tabla de inmuebles...
         tbody = page.locator(SELECTOR_TABLA_INMUEBLES)
         await tbody.wait_for(state="visible", timeout=15000)
         filas = tbody.locator("tr[data-ri]")
@@ -151,7 +149,6 @@ class RemajuExtractor:
                 "porcentajeRematar": porcentaje,
             }
 
-            # Inyectamos el bloque geográfico completo validado en cada inmueble
             inmueble.update(ubicacion)
 
             partida_limpia = partida.strip()
