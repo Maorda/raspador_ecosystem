@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "scraper-ecosystem"
+version = "0.2.0"
+description = "Base endurecida para un ecosistema de scraping asíncrono"
+requires-python = ">=3.10"
+dependencies = [
+    "nodriver>=0.30",
+    "pydantic>=2.0",
+    "typer>=0.9.0",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=7.4.0", "pytest-asyncio>=0.21.0"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["."]

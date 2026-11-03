@@ -1,0 +1,43 @@
+from __future__ import annotations
+
+SCHEMA_MAP = {
+    "mapeo_remate": {
+        "expediente": "Expediente",
+        "distritoJudicial": "Distrito Judicial",
+        "instancia": "Instancia",
+        "materia": "Materia",
+        "resolucion": "Resolución",
+        "fechaResolucion": "Fecha Resolución",
+        "tipoCambio": "Tipo Cambio",
+        "convocatoria": "Convocatoria",
+        "tasacion": "Tasación",
+        "precioBase": "Precio Base",
+        "incrementoEntreOfertas": "Incremento entre ofertas",
+        "arancel": "Arancel",
+        "oblaje": "Oblaje",
+        "descripcion": "Descripción",
+        "numeroDeInscritos": "numero De Inscritos"
+    },
+    "mapeo_inmuebles": {
+        "departamento": "Departamento",
+        "provincia": "Provincia",
+        "distrito": "Distrito",
+        "partidaRegistral": "Partida Registral",
+        "tipoInmueble": "Tipo Inmueble",
+        "direccion": "Dirección",
+        "cargaYGravamen": "Carga y/o Gravamen",
+        "porcentajeRematar": "Porcentaje a Rematar"
+    },
+    "mapeo_cronograma": {
+        "publicacionInicio": "Publicación e Inscripcion",
+        "publicacionFin": "Publicación e Inscripcion",
+        "validacionInscripcionInicio": "Validación de Inscripción",
+        "validacionInscripcionFin": "Validación de Inscripción",
+        "ofertasInicio": "Presentación de Ofertas",
+        "ofertasFin": "Presentación de Ofertas",
+        "pagoSaldoInicio": "Pago Saldo",
+        "pagoSaldoFin": "Pago Saldo",
+        "validacionSaldoInicio": "Validación del Saldo",
+        "validacionSaldoFin": "Validación del Saldo"
+    }
+}
